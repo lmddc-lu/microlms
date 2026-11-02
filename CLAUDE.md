@@ -50,6 +50,5 @@ Content modules live in `modules/`, one self-contained package each exposing `bu
 
 ## Conventions
 
-- Semantic versioning. CHANGELOG.md starts with the first release after the initial public one; from then on every release gets an entry with upgrade notes, breaking changes flagged.
 - New third-party dependencies for optional features belong in `[project.optional-dependencies]` extras, not core dependencies. Dev-only tools go in the `dev` dependency group.
 - `tests/` holds end-to-end smoke tests through the public API, one file per feature (`test_enrollments.py`, `test_authz.py`, `test_scorm.py`, ...), with shared out-of-band seeding, `RecordingHooks`, `FakeLrs` and package builders in `tests/helpers.py`. Extend the file of the feature rather than adding narrow unit tests; a new feature gets its own file. Tests run on PostgreSQL in a testcontainers `postgres:17-alpine` (`tests/conftest.py`): the schema comes from `alembic upgrade heads` into a template database each test clones through the `database_url` fixture, and `test_migrations_match_models` fails when the models declare something no migration creates.
