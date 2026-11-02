@@ -1,4 +1,4 @@
-# microlms-core
+# microlms
 
 Reusable micro-LMS engine. Client projects install this package, call `create_app()` with their own backends, and mount their own routers on top. The core is the only shared code; client repos stay thin shells.
 
