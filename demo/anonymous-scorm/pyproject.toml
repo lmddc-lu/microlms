@@ -1,0 +1,19 @@
+[project]
+name = "microlms-demo-anonymous-scorm"
+version = "0.1.0"
+description = "microlms-core demo: anonymous learners upload and play SCORM packages"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "microlms-core[scorm]",
+    "uvicorn>=0.30",
+    "psycopg[binary]>=3.2",
+]
+
+# The core from this checkout, so the demo always runs the code next to it
+[tool.uv.sources]
+microlms-core = { path = "../..", editable = true }
+
+# App, not an installable package
+[tool.uv]
+package = false

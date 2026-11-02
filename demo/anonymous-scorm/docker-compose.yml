@@ -1,0 +1,59 @@
+volumes:
+  db_data:
+
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: lms
+      POSTGRES_PASSWORD: lms
+      POSTGRES_DB: lms
+    volumes:
+      - db_data:/var/lib/postgresql/data
+      # Creates the second database used by lrsql
+      - ./compose/init-lrsql-db.sh:/docker-entrypoint-initdb.d/init-lrsql-db.sh:ro
+    ports:
+      - "5432:5432" # for running the app on the host during development
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U lms -d lms"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+
+  lrs:
+    image: yetanalytics/lrsql:latest
+    command:
+      - /lrsql/bin/run_postgres.sh
+    ports:
+      - "8080:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      LRSQL_API_KEY_DEFAULT: demo_key
+      LRSQL_API_SECRET_DEFAULT: demo_secret
+      LRSQL_ADMIN_USER_DEFAULT: demo_admin
+      LRSQL_ADMIN_PASS_DEFAULT: demo_admin_password
+      LRSQL_DB_HOST: db
+      LRSQL_DB_NAME: lrsql_db
+      LRSQL_DB_USER: lrsql_user
+      LRSQL_DB_PASSWORD: lrsql_password
+      LRSQL_POOL_INITIALIZATION_FAIL_TIMEOUT: 10000
+
+  app:
+    build:
+      context: ../..
+      dockerfile: demo/anonymous-scorm/Dockerfile
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      lrs:
+        condition: service_started
+    environment:
+      MICROLMS_DATABASE_URL: postgresql+psycopg://lms:lms@db:5432/lms
+      MICROLMS_LRS_URL: http://lrs:8080
+      MICROLMS_LRS_API_KEY: demo_key
+      MICROLMS_LRS_API_SECRET: demo_secret
+      MICROLMS_REGISTRATION_ORG_SLUG: playground

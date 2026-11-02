@@ -18,6 +18,12 @@ uv run alembic upgrade heads
 uv run alembic revision --autogenerate -m "message" --head core@head
 ```
 
+## Demos
+
+Runnable client projects built on the public core surface, under `demo/`:
+
+- [`demo/anonymous-scorm`](demo/anonymous-scorm) - anonymous learners upload and play SCORM packages.
+
 ## Usage in a client project
 
 Depend on a tagged release:
