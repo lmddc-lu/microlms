@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<!--
+H5P player: renders the extracted package with the vendored h5p-standalone
+player (main.bundle.js on this page, frame.bundle.js + h5p.css inside the
+content iframe it creates, all served by the player-assets endpoint). The
+package files come from the content endpoint. Once the player is ready, the
+page subscribes to the xAPI events the content emits (H5P.externalDispatcher)
+and forwards each statement to the LMS runtime endpoint, authenticated by the
+per-launch token baked into the URL; the server stamps the canonical actor
+before anything reaches the LRS. xAPIObjectIRI pins the statement object id
+to the activity IRI minted at import, so statements never carry this page's
+URL (which contains the launch token).
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>H5P Player</title>
+<style>
+  html, body { margin: 0; padding: 0; }
+  #h5p-container { max-width: 1080px; margin: 0 auto; }
+</style>
+<script src="__H5P_MAIN_SRC__"></script>
+</head>
+<body>
+<div id="h5p-container"></div>
+<script>
+"use strict";
+
+const CONFIG = __H5P_PLAYER_CONFIG__;
+
+document.title = CONFIG.title;
+
+function sendStatement(statement) {
+  fetch(CONFIG.statementsUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify([statement]),
+    keepalive: true,
+  }).catch((error) => console.error("H5P statement report failed", error));
+}
+
+new H5PStandalone.H5P(document.getElementById("h5p-container"), {
+  h5pJsonPath: CONFIG.contentUrl,
+  frameJs: CONFIG.assetsUrl + "/frame.bundle.js",
+  frameCss: CONFIG.assetsUrl + "/styles/h5p.css",
+  xAPIObjectIRI: CONFIG.objectIri,
+  fullScreen: true,
+})
+  .then(() => {
+    H5P.externalDispatcher.on("xAPI", (event) => {
+      const statement = event.data && event.data.statement;
+      if (statement) sendStatement(statement);
+    });
+  })
+  .catch((error) => {
+    document.body.textContent = "Failed to start the H5P content: " + error.message;
+  });
+</script>
+</body>
+</html>

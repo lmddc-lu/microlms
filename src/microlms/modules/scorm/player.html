@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<!--
+SCORM player: hosts the SCO in an iframe and exposes the SCORM runtime object
+on this window, where the SCO's API discovery algorithm (walking parent
+windows) finds it - window.API (Scorm12API) for SCORM 1.2 packages,
+window.API_1484_11 (Scorm2004API) for SCORM 2004 ones. The runtime object is
+scorm-again's implementation (vendored, served by the player-assets endpoint;
+the server picks the build matching the package). This page seeds it from the
+LMS runtime state, then reports the tracked cmi fields to the LMS runtime
+endpoints on commit and terminate, authenticated by the per-launch token baked
+into the URLs. A version adapter normalizes both data models into the same
+payload: the SCORM 1.2 fields (cmi.core.*, lesson_status, HH:MM:SS timespans)
+map onto the SCORM 2004 shape the server stores.
+
+An embedding page ends the session before removing the player, so the pages it
+shows next read the final state: the player posts {type: "microlms:scorm:ready"}
+to its parent once it listens, the parent posts {type: "microlms:scorm:end"},
+and the player answers {type: "microlms:scorm:ended"} after the SCO unloaded
+(its own exit handlers report through the API), the session terminated and
+every report to the LMS answered.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>SCORM Player</title>
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; }
+  iframe { display: block; width: 100%; height: 100%; border: 0; }
+</style>
+<script src="__SCORM_RUNTIME_SRC__"></script>
+</head>
+<body>
+<script>
+"use strict";
+
+const CONFIG = __SCORM_PLAYER_CONFIG__;
+
+document.title = CONFIG.title;
+
+function numberOrNull(value) {
+  if (value === undefined || value === null || value === "") return null;
+  return Number(value);
+}
+
+function textOrNull(value) {
+  if (value === undefined || value === null || value === "") return null;
+  return value;
+}
+
+// Snapshot of the cmi data model. The JSON export is the supported way to
+// read elements that are write-only through the SCO API (session_time, exit).
+function exportedCmi(api) {
+  return api.renderCMIToJSONObject().cmi;
+}
+
+// scorm-again renders cmi arrays as objects keyed by index ("0", "1", ...)
+function arrayEntries(source) {
+  if (!source) return [];
+  return Object.keys(source)
+    .filter((key) => /^\d+$/.test(key))
+    .sort((a, b) => Number(a) - Number(b))
+    .map((key) => source[key]);
+}
+
+function correctResponsePatterns(entry) {
+  return arrayEntries(entry.correct_responses)
+    .map((response) => response && response.pattern)
+    .filter((pattern) => pattern !== undefined && pattern !== null && pattern !== "");
+}
+
+// SCORM 1.2 CMITimespan ("HHHH:MM:SS.SS") to the ISO 8601 duration the
+// server parses; an unset value reports as zero
+function timespanToIso(value) {
+  const match = /^(\d+):(\d+):(\d+(?:\.\d+)?)$/.exec(value || "");
+  if (!match) return "PT0S";
+  return "PT" + Number(match[1]) + "H" + Number(match[2]) + "M" + Number(match[3]) + "S";
+}
+
+// The server's ISO duration ("PT1H30M5.5S", all components present) back to
+// the SCORM 1.2 CMITimespan format for seeding cmi.core.total_time
+function isoToTimespan(value) {
+  const match = /^PT(\d+)H(\d+)M(\d+(?:\.\d+)?)S$/.exec(value || "");
+  if (!match) return "0000:00:00";
+  const seconds = Number(match[3]);
+  const whole = Math.floor(seconds);
+  const fraction = seconds - whole;
+  return (
+    String(match[1]).padStart(4, "0") +
+    ":" + String(match[2]).padStart(2, "0") +
+    ":" + String(whole).padStart(2, "0") +
+    (fraction ? "." + fraction.toFixed(2).split(".")[1] : "")
+  );
+}
+
+// SCORM 1.2 folds completion and success into one cmi.core.lesson_status;
+// per its spec, passed/failed/completed all imply the SCO was completed
+const LESSON_STATUS_TO_STATE = {
+  "passed": { completion_status: "completed", success_status: "passed" },
+  "failed": { completion_status: "completed", success_status: "failed" },
+  "completed": { completion_status: "completed", success_status: "unknown" },
+  "incomplete": { completion_status: "incomplete", success_status: "unknown" },
+  "browsed": { completion_status: "incomplete", success_status: "unknown" },
+  "not attempted": { completion_status: "not attempted", success_status: "unknown" },
+};
+
+function lessonStatusFromState(state) {
+  if (state.success_status === "passed") return "passed";
+  if (state.success_status === "failed") return "failed";
+  if (state.completion_status === "completed") return "completed";
+  if (state.completion_status === "incomplete") return "incomplete";
+  return "not attempted";
+}
+
+// A scaled score derived from the SCORM 1.2 raw/min/max triple (spec defaults
+// 0/100); null when it cannot be derived or falls outside the valid range
+function scaledFromRaw(score) {
+  const raw = numberOrNull(score && score.raw);
+  if (raw === null) return null;
+  const min = numberOrNull(score && score.min) ?? 0;
+  const max = numberOrNull(score && score.max) ?? 100;
+  if (max <= min) return null;
+  const scaled = (raw - min) / (max - min);
+  return scaled >= -1 && scaled <= 1 ? scaled : null;
+}
+
+const ADAPTERS = {
+  "2004": {
+    windowProperty: "API_1484_11",
+    commitEvent: "Commit",
+    terminateEvent: "Terminate",
+    createApi: (settings) => new Scorm2004API(settings),
+    terminate: (api) => api.Terminate(""),
+    seed: (state) => {
+      const seed = {
+        "cmi.learner_id": state.learner_id,
+        "cmi.learner_name": state.learner_name,
+        "cmi.completion_status": state.completion_status,
+        "cmi.success_status": state.success_status,
+        "cmi.entry": state.entry,
+        "cmi.credit": state.credit,
+        "cmi.mode": state.mode,
+        "cmi.total_time": state.total_time,
+      };
+      if (state.location !== null) seed["cmi.location"] = state.location;
+      if (state.suspend_data !== null) seed["cmi.suspend_data"] = state.suspend_data;
+      if (state.score_scaled !== null) seed["cmi.score.scaled"] = String(state.score_scaled);
+      if (state.score_raw !== null) seed["cmi.score.raw"] = String(state.score_raw);
+      if (state.progress_measure !== null) {
+        seed["cmi.progress_measure"] = String(state.progress_measure);
+      }
+      return seed;
+    },
+    tracked: (cmi) => ({
+      completion_status: cmi.completion_status || "unknown",
+      success_status: cmi.success_status || "unknown",
+      score_scaled: numberOrNull(cmi.score && cmi.score.scaled),
+      score_raw: numberOrNull(cmi.score && cmi.score.raw),
+      progress_measure: numberOrNull(cmi.progress_measure),
+      location: textOrNull(cmi.location),
+      suspend_data: textOrNull(cmi.suspend_data),
+      interactions: arrayEntries(cmi.interactions)
+        .filter((entry) => entry && entry.id)
+        .map((entry) => ({
+          id: entry.id,
+          type: textOrNull(entry.type),
+          learner_response: textOrNull(entry.learner_response),
+          result: textOrNull(entry.result),
+          correct_responses: correctResponsePatterns(entry),
+          description: textOrNull(entry.description),
+          latency: textOrNull(entry.latency),
+        })),
+    }),
+    termination: (cmi) => ({
+      session_time: cmi.session_time || "PT0S",
+      exit_mode: cmi.exit || "",
+    }),
+  },
+  "1.2": {
+    windowProperty: "API",
+    commitEvent: "LMSCommit",
+    terminateEvent: "LMSFinish",
+    createApi: (settings) => new Scorm12API(settings),
+    terminate: (api) => api.LMSFinish(""),
+    seed: (state) => {
+      const seed = {
+        "cmi.core.student_id": state.learner_id,
+        "cmi.core.student_name": state.learner_name,
+        "cmi.core.lesson_status": lessonStatusFromState(state),
+        "cmi.core.entry": state.entry,
+        "cmi.core.credit": state.credit,
+        "cmi.core.lesson_mode": state.mode,
+        "cmi.core.total_time": isoToTimespan(state.total_time),
+      };
+      if (state.location !== null) seed["cmi.core.lesson_location"] = state.location;
+      if (state.suspend_data !== null) seed["cmi.suspend_data"] = state.suspend_data;
+      if (state.score_raw !== null) seed["cmi.core.score.raw"] = String(state.score_raw);
+      return seed;
+    },
+    tracked: (cmi) => {
+      const core = cmi.core || {};
+      const status = LESSON_STATUS_TO_STATE[core.lesson_status] || {
+        completion_status: "unknown",
+        success_status: "unknown",
+      };
+      return {
+        completion_status: status.completion_status,
+        success_status: status.success_status,
+        score_scaled: scaledFromRaw(core.score),
+        score_raw: numberOrNull(core.score && core.score.raw),
+        // SCORM 1.2 has no progress measure element
+        progress_measure: null,
+        location: textOrNull(core.lesson_location),
+        suspend_data: textOrNull(cmi.suspend_data),
+        interactions: arrayEntries(cmi.interactions)
+          .filter((entry) => entry && entry.id)
+          .map((entry) => ({
+            id: entry.id,
+            type: textOrNull(entry.type),
+            learner_response: textOrNull(entry.student_response),
+            // 1.2 says "wrong" where the 2004 vocabulary says "incorrect"
+            result: entry.result === "wrong" ? "incorrect" : textOrNull(entry.result),
+            correct_responses: correctResponsePatterns(entry),
+            description: null,
+            latency: entry.latency ? timespanToIso(entry.latency) : null,
+          })),
+      };
+    },
+    termination: (cmi) => ({
+      session_time: timespanToIso(cmi.core && cmi.core.session_time),
+      exit_mode: (cmi.core && cmi.core.exit) || "",
+    }),
+  },
+};
+
+// Reports sent through fetch that have not answered yet
+const pendingSends = new Set();
+
+function send(url, body, useBeacon) {
+  const json = JSON.stringify(body);
+  if (useBeacon && navigator.sendBeacon) {
+    navigator.sendBeacon(url, new Blob([json], { type: "application/json" }));
+    return;
+  }
+  const request = fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: json,
+    keepalive: true,
+  })
+    .catch((error) => console.error("SCORM commit failed", error))
+    .finally(() => pendingSends.delete(request));
+  pendingSends.add(request);
+}
+
+// The running session once the runtime started: { adapter, api, frame }
+let session = null;
+
+// Navigates the SCO frame away, which runs the SCO's unload handlers
+function unloadContent(frame) {
+  return new Promise((resolve) => {
+    frame.addEventListener("load", resolve, { once: true });
+    frame.src = "about:blank";
+  });
+}
+
+async function endSession() {
+  if (session !== null) {
+    await unloadContent(session.frame);
+    if (session.api.isInitialized() && !session.api.isTerminated()) {
+      session.adapter.terminate(session.api);
+    }
+  }
+  await Promise.all(pendingSends);
+}
+
+window.addEventListener("message", function (event) {
+  if (event.source !== window.parent) return;
+  if (!event.data || event.data.type !== "microlms:scorm:end") return;
+  endSession().then(() => {
+    event.source.postMessage({ type: "microlms:scorm:ended" }, event.origin);
+  });
+});
+
+if (window.parent !== window) {
+  // Carries no data, so any embedding origin may receive it
+  window.parent.postMessage({ type: "microlms:scorm:ready" }, "*");
+}
+
+fetch(CONFIG.stateUrl)
+  .then((response) => {
+    if (!response.ok) throw new Error("runtime state request failed: " + response.status);
+    return response.json();
+  })
+  .then((state) => {
+    const adapter = ADAPTERS[CONFIG.version];
+    const api = adapter.createApi({
+      autocommit: false,
+      lmsCommitUrl: false,
+      logLevel: "ERROR",
+    });
+
+    api.loadFromFlattenedJSON(adapter.seed(state));
+
+    // Listeners fire after scorm-again's storeData has applied its status and
+    // score rollups, so the snapshot reflects the final state of the call.
+    let pageHiding = false;
+    api.on(adapter.commitEvent, function () {
+      send(CONFIG.commitUrl, adapter.tracked(exportedCmi(api)), false);
+    });
+    api.on(adapter.terminateEvent, function () {
+      const cmi = exportedCmi(api);
+      const payload = Object.assign(adapter.tracked(cmi), adapter.termination(cmi));
+      send(CONFIG.terminateUrl, payload, pageHiding);
+    });
+
+    window[adapter.windowProperty] = api;
+
+    // Safety net: a SCO that never terminates (window closed mid-session)
+    // still reports its final state through a beacon.
+    window.addEventListener("pagehide", function () {
+      if (api.isInitialized() && !api.isTerminated()) {
+        pageHiding = true;
+        adapter.terminate(api);
+      }
+    });
+
+    const frame = document.createElement("iframe");
+    frame.src = CONFIG.contentUrl;
+    frame.title = CONFIG.title;
+    document.body.appendChild(frame);
+    session = { adapter, api, frame };
+  })
+  .catch((error) => {
+    document.body.textContent = "Failed to start the SCORM session: " + error.message;
+  });
+</script>
+</body>
+</html>
