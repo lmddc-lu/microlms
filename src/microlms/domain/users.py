@@ -155,6 +155,11 @@ class LastRoleRemovalError(Exception):
     """Raised when revoking a user's only role; every user holds at least one."""
 
 
+class ExternalIdentityConflictError(Exception):
+    """Raised when an id presented as an external identity belongs to a user
+    that is not one (e.g. a regular account's GUID sent as a guest)."""
+
+
 def role_assignments_for(roles: Iterable[str]) -> list["UserRoleAssignment"]:
     """Build platform-role rows for a role set; raise if the set is empty.
 
@@ -466,7 +471,7 @@ def create_user(
 
 
 def provision_external_user(session: Session, user_id: uuid.UUID, org_id: int, role: str) -> User:
-    """Return the user with this id, creating a minimal profile if absent.
+    """Return the external identity with this id, creating a minimal profile if absent.
 
     For identities that originate outside the platform and carry their own id
     (e.g. a device-generated GUID submitting xAPI): the first submission creates
@@ -475,13 +480,19 @@ def provision_external_user(session: Session, user_id: uuid.UUID, org_id: int, r
     concurrent first submissions - a losing insert reconciles to the row the
     winner created.
 
+    The id is the caller's only proof of identity, so an existing user is
+    returned only when it is still exactly such a profile (no platform role,
+    ``role`` alone in ``org_id``). Any other account raises
+    :class:`ExternalIdentityConflictError`: knowing a regular user's id must
+    never be enough to act as them.
+
     Unlike the other services this one owns its transaction: the concurrent
     reconciliation needs the commit/rollback to happen right here, so callers
     must invoke it before starting other uncommitted work on the session.
     """
     user = session.get(User, user_id)
     if user is not None:
-        return user
+        return _ensure_external_identity(user, org_id, role)
     user = User(id=user_id, full_name="", memberships=memberships_for(org_id, {role}))
     session.add(user)
     # System-side creation: no authenticated actor; atomic with the insert
@@ -501,8 +512,18 @@ def provision_external_user(session: Session, user_id: uuid.UUID, org_id: int, r
         existing = session.get(User, user_id)
         if existing is None:
             raise
-        return existing
+        return _ensure_external_identity(existing, org_id, role)
     session.refresh(user)
+    return user
+
+
+def _ensure_external_identity(user: User, org_id: int, role: str) -> User:
+    """Return ``user`` when it holds exactly what :func:`provision_external_user`
+    grants, else raise :class:`ExternalIdentityConflictError`."""
+    if user.roles or user.org_roles != {org_id: frozenset({role})}:
+        raise ExternalIdentityConflictError(
+            f"User {user.id} is not an external identity holding only role {role!r} in org {org_id}"
+        )
     return user
 
 

@@ -134,6 +134,14 @@ def test_xapi_ingestion_loop(tmp_path: Path, database_url: str) -> None:
         spoof = {**survey, "actor": {"account": {"name": str(uuid.uuid4())}}}
         assert client.post("/api/v1/xapi/statements", json=spoof, headers=bearer).status_code == 403
 
+        # Without a bearer token, a regular account's GUID cannot be used as a
+        # guest GUID: knowing the id is not enough to write as that user
+        impersonation = {**survey, "actor": {"account": {"name": member["user_id"]}}}
+        assert (
+            client.post("/api/v1/xapi/statements", json=impersonation, headers=key).status_code
+            == 403
+        )
+
         # A batch of statements is accepted in one call
         batch = client.post("/api/v1/xapi/statements", json=[guest_stmt, guest_stmt], headers=key)
         assert batch.json()["stored"] == 2

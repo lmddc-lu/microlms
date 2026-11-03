@@ -9,7 +9,9 @@ plus the runtime-managed ones platform managers issue and revoke through the
 credential header, accepted statement shape) for supervision. An optional user
 bearer token (``Authorization``) binds the statements to that authenticated
 user; without it, the GUID carried in ``actor.account.name`` provisions an
-anonymous guest identity on first sight and attaches to it afterwards.
+anonymous guest identity on first sight and attaches to it afterwards. A GUID
+that belongs to any other account is refused (403): without a bearer token the
+GUID is the only proof of identity, so it can never stand in for a regular user.
 
 The LMS stamps the canonical actor on every statement so ingested results share
 one identity with web and content activity, tags it with the
@@ -50,7 +52,11 @@ from microlms.api.deps import (
 from microlms.auth.base import AuthBackend, AuthenticatedUser, AuthenticationError
 from microlms.authz import Permission
 from microlms.domain.enrollments import EnrollmentNotFoundError, get_enrollment
-from microlms.domain.users import list_user_ids, provision_external_user
+from microlms.domain.users import (
+    ExternalIdentityConflictError,
+    list_user_ids,
+    provision_external_user,
+)
 from microlms.lrs import (
     XAPI_VERSION,
     LrsClient,
@@ -332,14 +338,21 @@ def build_router() -> APIRouter:
                         detail="Guest ingestion is disabled (set MICROLMS_XAPI_GUEST_ROLE and "
                         "MICROLMS_XAPI_GUEST_ORG_SLUG)",
                     )
-                guest = provision_external_user(
-                    session,
-                    supplied,
-                    configured_org_id(
-                        session, settings.xapi_guest_org_slug, "MICROLMS_XAPI_GUEST_ORG_SLUG"
-                    ),
-                    settings.xapi_guest_role,
-                )
+                try:
+                    guest = provision_external_user(
+                        session,
+                        supplied,
+                        configured_org_id(
+                            session, settings.xapi_guest_org_slug, "MICROLMS_XAPI_GUEST_ORG_SLUG"
+                        ),
+                        settings.xapi_guest_role,
+                    )
+                except ExternalIdentityConflictError as error:
+                    raise HTTPException(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        detail="Statement actor is not a guest identity: submit statements "
+                        "for a regular account with that user's bearer token",
+                    ) from error
                 if not guest.is_active:
                     raise HTTPException(
                         status_code=status.HTTP_403_FORBIDDEN,
