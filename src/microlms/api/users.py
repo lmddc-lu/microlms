@@ -52,6 +52,7 @@ from microlms.authz import (
     Permission,
     can_bind,
     has_platform_permission,
+    permissions_at,
 )
 from microlms.domain.languages import InvalidLanguageTagError
 from microlms.domain.orgs import (
@@ -245,10 +246,16 @@ def read_assignable_roles(
     ] = None,
 ) -> RolesRead:
     """The roles the current user may assign or revoke in organization
-    ``org_id`` (or on the platform when omitted): those whose every permission,
-    and assign permission when the policy names one, they hold there. Only the
-    no-escalation rule is applied; assigning still needs the user-management
-    permission of the endpoint used."""
+    ``org_id`` (or on the platform when omitted): none unless they create
+    accounts or edit roles there, then those whose every permission, and
+    assign permission when the policy names one, they hold there."""
+    # Roles are assigned by creating an account or editing its roles; without
+    # either permission at the scope, nothing is assignable there, not even a
+    # role granting nothing
+    if not {Permission.USER_CREATE, Permission.USER_ROLES_EDIT} & permissions_at(
+        permissions, org_id
+    ):
+        return []
     return [role for role in policy.roles if can_bind(permissions, role, org_id, policy)]
 
 

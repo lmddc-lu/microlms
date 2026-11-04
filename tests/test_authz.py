@@ -259,9 +259,15 @@ def test_scope_and_no_escalation_follow_the_assignment(tmp_path: Path, database_
         ).json()
         # (the platform auditor grant applies inside A too)
         assert assignable == ["auditor", "commenter", "learner", "manager"]
-        assert client.get("/api/v1/users/me/assignable-roles", headers=boss["headers"]).json() == [
-            "auditor"
-        ]
+        # Nothing is assignable where the manager neither creates accounts nor
+        # edits roles: on the platform, and in an org outside their reach
+        assert client.get("/api/v1/users/me/assignable-roles", headers=boss["headers"]).json() == []
+        assert (
+            client.get(
+                f"/api/v1/users/me/assignable-roles?org_id={org_b}", headers=boss["headers"]
+            ).json()
+            == []
+        )
         assert client.put(f"{roles_url}/reporter", headers=boss["headers"]).status_code == 403
         assert client.put(f"{roles_url}/instructor", headers=boss["headers"]).status_code == 403
         assert (
