@@ -44,9 +44,10 @@ clients, taking form-encoded requests:
 
 Both answer ``{access_token, token_type, expires_in, refresh_token}`` with
 ``Cache-Control: no-store``. The access token is a JWT whose ``sub`` claim is
-the user id, valid ``access_token_expire_minutes``; validation checks the
-signature and expiry without a database round-trip, then loads the user to
-attach roles, so deactivation and role changes apply on the next
+the user id and ``sid`` claim the session id, valid
+``access_token_expire_minutes``; validation checks the signature and expiry,
+that the session was not ended (logout, revocation), then loads the user to
+attach roles, so logout, deactivation and role changes apply on the next
 request. The refresh token is opaque and rotated on every use (see
 :mod:`microlms.domain.refresh_tokens`): each one expires
 ``refresh_token_expire_minutes`` after it was issued, and none outlives

@@ -157,6 +157,19 @@ def consume_refresh_token(session: Session, token: str) -> RefreshGrant:
     return RefreshGrant(user_id=user_id, family_id=family_id, family_expires_at=family_expires_at)
 
 
+def session_is_active(session: Session, family_id: uuid.UUID, now: datetime) -> bool:
+    """Whether the session is still open: neither ended (logout, revocation,
+    reuse, new password, deactivation) nor past its absolute limit."""
+    return (
+        session.scalar(
+            select(RefreshToken.token_hash)
+            .where(RefreshToken.family_id == family_id, RefreshToken.family_expires_at > now)
+            .limit(1)
+        )
+        is not None
+    )
+
+
 def revoke_refresh_token(session: Session, token: str) -> None:
     """End the session a refresh token belongs to, whatever the token's
     state, queuing SessionEnded; an unknown token changes nothing. The caller

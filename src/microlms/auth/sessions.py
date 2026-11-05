@@ -7,8 +7,10 @@ signed JWT access token whose ``sub`` claim is the user id and ``sid`` claim
 the session id, plus an opaque refresh token rotated on every use (see
 :mod:`microlms.domain.refresh_tokens`). Each refresh token expires
 ``refresh_token_expire_minutes`` after it was issued, and none outlives
-``session_max_minutes`` after the sign-in. The session id reaches the request
-identity (``AuthenticatedUser.session_id``), and the ``SessionEnded`` event
+``session_max_minutes`` after the sign-in. An access token stops working as
+soon as its session is ended, not only when it expires. The session id
+reaches the request identity (``AuthenticatedUser.session_id``), and the
+``SessionEnded`` event
 names it once the session is ended (logout, revocation, reuse detection, a
 new password, deactivation); a session reaching its time limit ends without
 an event.
@@ -54,6 +56,7 @@ from microlms.domain.refresh_tokens import (
     consume_refresh_token,
     issue_refresh_token,
     revoke_refresh_token,
+    session_is_active,
 )
 from microlms.domain.users import UserNotFoundError, get_user, record_login
 from microlms.events import EventHooks, commit_with_events
@@ -196,7 +199,8 @@ class SessionIssuer:
 
     def authenticate(self, session: Session, request: Request) -> AuthenticatedUser:
         """Resolve the request's bearer access token to an active user and
-        their session."""
+        their session; refused once the session is ended, even before the
+        token expires."""
         token = bearer_token(request)
         try:
             claims = self._access_token_claims(token)
@@ -210,6 +214,8 @@ class SessionIssuer:
             session_id = uuid.UUID(claims.session_id)
         except ValueError as error:
             raise AuthenticationError("Token sid is not a session id") from error
+        if not session_is_active(session, session_id, datetime.now(UTC)):
+            raise AuthenticationError("Session has ended")
         try:
             user = get_user(session, user_id)
         except UserNotFoundError as error:

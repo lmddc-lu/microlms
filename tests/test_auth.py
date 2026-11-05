@@ -216,6 +216,16 @@ def test_jwt_auth_login_loop(tmp_path: Path, database_url: str) -> None:
         revocation = client.post("/auth/revoke", data={"token": revoked_session["refresh_token"]})
         assert revocation.status_code == 200
         assert hooks.sessions_ended[-1] == session_ended(user_id, revoked_session["access_token"])
+
+        # The ended session's access token stops working before it expires,
+        # the other session's keeps working
+        def me_status(token: str) -> int:
+            return client.get(
+                "/api/v1/users/me", headers={"Authorization": f"Bearer {token}"}
+            ).status_code
+
+        assert me_status(revoked_session["access_token"]) == 401
+        assert me_status(other_session["access_token"]) == 200
         assert oauth_error(refresh(revoked_session["refresh_token"])) == "invalid_grant"
         jane_session = refresh(other_session["refresh_token"]).json()
         ended_count = len(hooks.sessions_ended)
@@ -254,8 +264,9 @@ def test_jwt_auth_login_loop(tmp_path: Path, database_url: str) -> None:
         assert renewed_me.status_code == 200
         assert client.cookies["microlms_refresh_token"] != first_cookie
 
-        # Logout revokes the session and clears the cookie
+        # Logout revokes the session, its access tokens and the cookie
         assert client.delete("/auth/session").status_code == 204
+        assert me_status(remembered.json()["access_token"]) == 401
         assert hooks.sessions_ended[-1] == session_ended(user_id, remembered.json()["access_token"])
         assert "microlms_refresh_token" not in client.cookies
         # Present the revoked cookie again, as a browser that kept it would
@@ -294,7 +305,11 @@ def test_jwt_auth_login_loop(tmp_path: Path, database_url: str) -> None:
         )
         assert form_session.status_code == 422
 
-        me = client.get("/api/v1/users/me", headers={"Authorization": f"Bearer {access_token}"})
+        # The first session ended with the refresh token reuse above, so its
+        # access token no longer works; Jane's other session still does
+        assert me_status(access_token) == 401
+        jane_headers = {"Authorization": f"Bearer {jane_session['access_token']}"}
+        me = client.get("/api/v1/users/me", headers=jane_headers)
         assert me.status_code == 200
         assert me.json()["id"] == user_id
         assert me.json()["email"] == "jane@example.com"
@@ -312,7 +327,6 @@ def test_jwt_auth_login_loop(tmp_path: Path, database_url: str) -> None:
         assert garbage.status_code == 401
 
         # --- Self-service account management ---
-        jane_headers = {"Authorization": f"Bearer {access_token}"}
         assert me.json()["full_name"] == "Jane"
 
         # Own profile edit; the sign-in email is not part of it
@@ -377,8 +391,10 @@ def test_jwt_auth_login_loop(tmp_path: Path, database_url: str) -> None:
         )
         assert refusal(login("jane@example.com", "S3cret-pass")) == "invalid_credentials"
         assert login("jane@example.com", "N3w-secret").status_code == 200
-        # A new password ends every session opened with the old one
+        # A new password ends every session opened with the old one, and
+        # their access tokens
         assert oauth_error(refresh(jane_session["refresh_token"])) == "invalid_grant"
+        assert me_status(jane_session["access_token"]) == 401
 
         # --- Credential management and lockout ---
         # Bootstrap an admin: registration only creates learners, so the role
@@ -481,8 +497,8 @@ def test_jwt_auth_login_loop(tmp_path: Path, database_url: str) -> None:
         employee_headers = {"Authorization": f"Bearer {employee_session['access_token']}"}
 
         # Deactivation kills logins, already-issued access tokens and the
-        # sessions; reactivation restores logins and the access tokens still
-        # running, not the ended sessions
+        # sessions; reactivation restores logins, not the ended sessions nor
+        # their access tokens
         assert (
             client.post(
                 f"/api/v1/users/{employee_id}/deactivate", headers=manager_headers
@@ -500,7 +516,7 @@ def test_jwt_auth_login_loop(tmp_path: Path, database_url: str) -> None:
             ).status_code
             == 200
         )
-        assert client.get("/api/v1/users/me", headers=employee_headers).status_code == 200
+        assert client.get("/api/v1/users/me", headers=employee_headers).status_code == 401
         assert oauth_error(refresh(employee_session["refresh_token"])) == "invalid_grant"
 
         # --- Self-service password recovery ---
