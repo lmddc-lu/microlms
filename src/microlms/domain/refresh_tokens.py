@@ -12,6 +12,10 @@ expires: presenting it again means two parties hold the session, so the
 whole family is revoked (refresh token rotation with reuse detection, OAuth
 2.0 Security Best Current Practice, RFC 9700 section 4.14.2). The thief and
 the legitimate client are both cut off, and the user logs in again.
+
+The family id is the session id (``AuthenticatedUser.session_id``). Ending a
+session queues :class:`microlms.events.SessionEnded`; the time-limit cleanup
+does not.
 """
 
 import hashlib
@@ -24,6 +28,7 @@ from sqlalchemy import DateTime, ForeignKey, String, Uuid, delete, select, updat
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from microlms.db.base import Base
+from microlms.events import SessionEnded, queue_event
 
 __all__: list[str] = []
 
@@ -144,6 +149,7 @@ def consume_refresh_token(session: Session, token: str) -> RefreshGrant:
         user_id, family_id = used
         session.execute(delete(RefreshToken).where(RefreshToken.family_id == family_id))
         session.flush()
+        queue_event(session, SessionEnded(user_id=user_id, session_id=family_id))
         raise RefreshTokenReusedError(user_id, family_id)
     user_id, family_id, expires_at, family_expires_at = row
     if expires_at <= now or family_expires_at <= now:
@@ -153,16 +159,31 @@ def consume_refresh_token(session: Session, token: str) -> RefreshGrant:
 
 def revoke_refresh_token(session: Session, token: str) -> None:
     """End the session a refresh token belongs to, whatever the token's
-    state; an unknown token changes nothing. The caller commits."""
-    family_id = session.execute(
-        select(RefreshToken.family_id).where(RefreshToken.token_hash == _hash_refresh_token(token))
-    ).scalar_one_or_none()
-    if family_id is not None:
-        session.execute(delete(RefreshToken).where(RefreshToken.family_id == family_id))
-        session.flush()
+    state, queuing SessionEnded; an unknown token changes nothing. The caller
+    commits."""
+    found = session.execute(
+        select(RefreshToken.user_id, RefreshToken.family_id).where(
+            RefreshToken.token_hash == _hash_refresh_token(token)
+        )
+    ).one_or_none()
+    if found is None:
+        return
+    user_id, family_id = found
+    session.execute(delete(RefreshToken).where(RefreshToken.family_id == family_id))
+    session.flush()
+    queue_event(session, SessionEnded(user_id=user_id, session_id=family_id))
 
 
 def revoke_user_refresh_tokens(session: Session, user_id: uuid.UUID) -> None:
-    """End every session of a user; the caller commits."""
+    """End every session of a user, queuing SessionEnded for each; the
+    caller commits."""
+    family_ids = session.scalars(
+        select(RefreshToken.family_id)
+        .where(RefreshToken.user_id == user_id)
+        .distinct()
+        .order_by(RefreshToken.family_id)
+    ).all()
     session.execute(delete(RefreshToken).where(RefreshToken.user_id == user_id))
     session.flush()
+    for family_id in family_ids:
+        queue_event(session, SessionEnded(user_id=user_id, session_id=family_id))

@@ -18,6 +18,7 @@ from microlms.events import (
     RoleGranted,
     RoleRevoked,
     ScormRuntimeCommitted,
+    SessionEnded,
     UserCreated,
     UserEnrolled,
 )
@@ -116,6 +117,7 @@ class RecordingHooks:
         self.org_assigned: list[CourseOrgAssigned] = []
         self.org_unassigned: list[CourseOrgUnassigned] = []
         self.scorm_commits: list[ScormRuntimeCommitted] = []
+        self.sessions_ended: list[SessionEnded] = []
 
     def on_user_created(self, event: UserCreated) -> None:
         self.created.append(event)
@@ -149,6 +151,9 @@ class RecordingHooks:
 
     def on_scorm_runtime_committed(self, event: ScormRuntimeCommitted) -> None:
         self.scorm_commits.append(event)
+
+    def on_session_ended(self, event: SessionEnded) -> None:
+        self.sessions_ended.append(event)
 
 
 CMI5_XML = """<?xml version="1.0" encoding="utf-8"?>

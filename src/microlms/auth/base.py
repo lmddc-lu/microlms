@@ -30,13 +30,17 @@ class AuthenticatedUser:
     The stable identifier is ``id``. ``roles`` are the platform roles, held
     outside any organization; ``org_roles`` maps each organization the user
     belongs to onto the org roles held there (free-form labels; permissions
-    are derived from both via the policy in :mod:`microlms.authz`). Build it
+    are derived from both via the policy in :mod:`microlms.authz`).
+    ``session_id`` is the LMS session the request's credential belongs to
+    (the ``SessionEnded`` event names it when the session ends); None for
+    backends without sessions, and for an impersonated identity. Build it
     from a loaded user with :func:`authenticated_user_from`.
     """
 
     id: uuid.UUID
     roles: frozenset[str]
     org_roles: Mapping[int, frozenset[str]]
+    session_id: uuid.UUID | None
 
     @property
     def org_ids(self) -> frozenset[int]:
@@ -44,9 +48,12 @@ class AuthenticatedUser:
         return frozenset(self.org_roles)
 
 
-def authenticated_user_from(user: User) -> AuthenticatedUser:
-    """The request identity of a loaded user, with its platform and org roles."""
-    return AuthenticatedUser(id=user.id, roles=user.roles, org_roles=user.org_roles)
+def authenticated_user_from(user: User, session_id: uuid.UUID | None) -> AuthenticatedUser:
+    """The request identity of a loaded user, with its platform and org roles
+    and the session its credential belongs to (None without one)."""
+    return AuthenticatedUser(
+        id=user.id, roles=user.roles, org_roles=user.org_roles, session_id=session_id
+    )
 
 
 def ensure_active_user(user: User) -> None:

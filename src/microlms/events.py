@@ -33,6 +33,7 @@ __all__ = [
     "RoleGranted",
     "RoleRevoked",
     "ScormRuntimeCommitted",
+    "SessionEnded",
     "UserCreated",
     "UserEnrolled",
     "commit_with_events",
@@ -119,6 +120,22 @@ class RoleRevoked:
     role: str
     # Organization the org role was held in; None for a platform role
     org_id: int | None
+
+
+@dataclass(frozen=True, slots=True)
+class SessionEnded:
+    """Emitted when an LMS session is ended before its time limit: a logout,
+    a revoked refresh token, a refresh token reuse, a new password or a
+    deactivated account (one event per session ended). A session reaching
+    its time limit ends without an event.
+
+    ``session_id`` is the ``AuthenticatedUser.session_id`` the session's
+    requests carried, so a client that recorded work against the session
+    (e.g. sign-ins it relayed to other sites) can undo it.
+    """
+
+    user_id: uuid.UUID
+    session_id: uuid.UUID
 
 
 @dataclass(frozen=True, slots=True)
@@ -229,6 +246,8 @@ class EventHooks(Protocol):
 
     def on_scorm_runtime_committed(self, event: ScormRuntimeCommitted) -> None: ...
 
+    def on_session_ended(self, event: SessionEnded) -> None: ...
+
 
 DomainEvent = (
     UserCreated
@@ -242,6 +261,7 @@ DomainEvent = (
     | CourseOrgAssigned
     | CourseOrgUnassigned
     | ScormRuntimeCommitted
+    | SessionEnded
 )
 
 # Session.info key holding the events queued by domain services since the
@@ -289,6 +309,8 @@ def _dispatch(hooks: EventHooks, event: DomainEvent) -> None:
             hooks.on_course_org_unassigned(event)
         case ScormRuntimeCommitted():
             hooks.on_scorm_runtime_committed(event)
+        case SessionEnded():
+            hooks.on_session_ended(event)
         case _:
             raise UnknownEventTypeError(f"No hook dispatch for event {event!r}")
 
@@ -345,4 +367,7 @@ class NullEventHooks:
         return None
 
     def on_scorm_runtime_committed(self, event: ScormRuntimeCommitted) -> None:
+        return None
+
+    def on_session_ended(self, event: SessionEnded) -> None:
         return None

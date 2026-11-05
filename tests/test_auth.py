@@ -24,7 +24,7 @@ from microlms.auth import AuthenticatedUser, AuthenticationError, authenticated_
 from microlms.domain.auth_tokens import TokenNotFoundError, resolve_anonymous_token
 from microlms.domain.refresh_tokens import RefreshToken
 from microlms.domain.users import UserRoleAssignment
-from microlms.events import NullEventHooks
+from microlms.events import NullEventHooks, SessionEnded
 from microlms.storage import FilesystemStorage
 from tests.helpers import (
     ALL_CORE_ROUTERS,
@@ -82,7 +82,7 @@ def _jwt_app(tmp_path: Path, database_url: str, hooks: RecordingHooks) -> FastAP
 
 
 def test_jwt_auth_login_loop(tmp_path: Path, database_url: str) -> None:
-    pytest.importorskip("jwt")
+    pyjwt = pytest.importorskip("jwt")
     hooks = RecordingHooks()
     app = _jwt_app(tmp_path, database_url, hooks)
 
@@ -138,6 +138,14 @@ def test_jwt_auth_login_loop(tmp_path: Path, database_url: str) -> None:
             assert oauth_error(response) == "invalid_grant"
             return response.json()["reason"]
 
+        def session_of(access_token: str) -> uuid.UUID:
+            # The session id an access token carries in its sid claim
+            claims = pyjwt.decode(access_token, options={"verify_signature": False})
+            return uuid.UUID(claims["sid"])
+
+        def session_ended(user: str, access_token: str) -> SessionEnded:
+            return SessionEnded(user_id=uuid.UUID(user), session_id=session_of(access_token))
+
         token_response = login("jane@example.com", "S3cret-pass")
         assert token_response.status_code == 200
         assert token_response.headers["cache-control"] == "no-store"
@@ -169,6 +177,8 @@ def test_jwt_auth_login_loop(tmp_path: Path, database_url: str) -> None:
         assert renewed.headers["cache-control"] == "no-store"
         renewed_tokens = renewed.json()
         assert renewed_tokens["refresh_token"] != first_refresh_token
+        # The renewed access token stays in the same session
+        assert session_of(renewed_tokens["access_token"]) == session_of(access_token)
         renewed_me = client.get(
             "/api/v1/users/me",
             headers={"Authorization": f"Bearer {renewed_tokens['access_token']}"},
@@ -182,7 +192,9 @@ def test_jwt_auth_login_loop(tmp_path: Path, database_url: str) -> None:
         assert refresh_as_bearer.status_code == 401
 
         # Presenting a used refresh token again revokes the whole session
+        assert hooks.sessions_ended == []
         assert oauth_error(refresh(first_refresh_token)) == "invalid_grant"
+        assert hooks.sessions_ended == [session_ended(user_id, access_token)]
         assert oauth_error(refresh(renewed_tokens["refresh_token"])) == "invalid_grant"
         assert oauth_error(refresh("not-a-token")) == "invalid_grant"
 
@@ -203,9 +215,12 @@ def test_jwt_auth_login_loop(tmp_path: Path, database_url: str) -> None:
         other_session = login("jane@example.com", "S3cret-pass").json()
         revocation = client.post("/auth/revoke", data={"token": revoked_session["refresh_token"]})
         assert revocation.status_code == 200
+        assert hooks.sessions_ended[-1] == session_ended(user_id, revoked_session["access_token"])
         assert oauth_error(refresh(revoked_session["refresh_token"])) == "invalid_grant"
         jane_session = refresh(other_session["refresh_token"]).json()
+        ended_count = len(hooks.sessions_ended)
         assert client.post("/auth/revoke", data={"token": "not-a-token"}).status_code == 200
+        assert len(hooks.sessions_ended) == ended_count
         access_revocation = client.post(
             "/auth/revoke", data={"token": revoked_session["access_token"]}
         )
@@ -241,6 +256,7 @@ def test_jwt_auth_login_loop(tmp_path: Path, database_url: str) -> None:
 
         # Logout revokes the session and clears the cookie
         assert client.delete("/auth/session").status_code == 204
+        assert hooks.sessions_ended[-1] == session_ended(user_id, remembered.json()["access_token"])
         assert "microlms_refresh_token" not in client.cookies
         # Present the revoked cookie again, as a browser that kept it would
         client.cookies.set(
@@ -472,6 +488,9 @@ def test_jwt_auth_login_loop(tmp_path: Path, database_url: str) -> None:
                 f"/api/v1/users/{employee_id}/deactivate", headers=manager_headers
             ).status_code
             == 200
+        )
+        assert hooks.sessions_ended[-1] == session_ended(
+            employee_id, employee_session["access_token"]
         )
         assert refusal(login("emp@acme.example", "Emp-pass-2")) == "account_deactivated"
         assert client.get("/api/v1/users/me", headers=employee_headers).status_code == 401
@@ -742,7 +761,7 @@ def test_cookie_transport_auth_backend(tmp_path: Path, database_url: str) -> Non
                 user = resolve_anonymous_token(session, uuid.UUID(cookie))
             except (ValueError, TokenNotFoundError) as error:
                 raise AuthenticationError(str(error)) from error
-            return authenticated_user_from(user)
+            return authenticated_user_from(user, None)
 
         def router(self) -> None:
             return None

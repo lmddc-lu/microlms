@@ -394,8 +394,13 @@ def reactivate_user(session: Session, user_id: uuid.UUID) -> User:
 
 
 def delete_user(session: Session, user_id: uuid.UUID) -> None:
-    """Delete a user; every row keyed to them follows via ON DELETE CASCADE."""
+    """Delete a user; every row keyed to them follows via ON DELETE CASCADE.
+
+    Their sessions are ended first, so each one announces SessionEnded like
+    any other revocation.
+    """
     user = get_user(session, user_id)
+    revoke_user_refresh_tokens(session, user_id)
     session.delete(user)
     session.flush()
 

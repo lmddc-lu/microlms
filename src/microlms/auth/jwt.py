@@ -242,9 +242,6 @@ class JwtAuthBackend:
         self._reset_token_expire_minutes = reset_token_expire_minutes
         self._password_policy = password_policy
 
-    def create_access_token(self, user_id: uuid.UUID) -> str:
-        return self._sessions.create_access_token(user_id)
-
     def create_password_reset_token(
         self, session: Session, user_id: uuid.UUID
     ) -> tuple[str, datetime]:

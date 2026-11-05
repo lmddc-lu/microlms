@@ -238,7 +238,7 @@ def _impersonate(
             detail="Deactivated accounts cannot be impersonated",
         )
     request.state.impersonator = real_user
-    return authenticated_user_from(target)
+    return authenticated_user_from(target, None)
 
 
 CurrentUserDep = Annotated[AuthenticatedUser, Depends(get_current_user)]

@@ -47,7 +47,7 @@ class AnonymousAuthBackend:
         except TokenNotFoundError as error:
             raise AuthenticationError(str(error)) from error
         ensure_active_user(user)
-        return authenticated_user_from(user)
+        return authenticated_user_from(user, None)
 
     def router(self) -> APIRouter:
         # Imported here to avoid a cycle: api.deps imports the auth package.

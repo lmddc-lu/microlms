@@ -3,10 +3,15 @@
 However a user signs in (email/password in :mod:`microlms.auth.jwt`, an
 OpenID Connect provider in :mod:`microlms.auth.oidc`), the backend then
 starts the same kind of session through :class:`SessionIssuer`: a short-lived
-signed JWT access token whose ``sub`` claim is the user id, plus an opaque
-refresh token rotated on every use (see :mod:`microlms.domain.refresh_tokens`).
-Each refresh token expires ``refresh_token_expire_minutes`` after it was
-issued, and none outlives ``session_max_minutes`` after the sign-in.
+signed JWT access token whose ``sub`` claim is the user id and ``sid`` claim
+the session id, plus an opaque refresh token rotated on every use (see
+:mod:`microlms.domain.refresh_tokens`). Each refresh token expires
+``refresh_token_expire_minutes`` after it was issued, and none outlives
+``session_max_minutes`` after the sign-in. The session id reaches the request
+identity (``AuthenticatedUser.session_id``), and the ``SessionEnded`` event
+names it once the session is ended (logout, revocation, reuse detection, a
+new password, deactivation); a session reaching its time limit ends without
+an event.
 
 Browser apps keep the refresh token out of reach of the page's scripts: it
 travels in an ``HttpOnly``, ``SameSite=Strict`` cookie scoped to
@@ -59,7 +64,7 @@ __all__: list[str] = []
 JwtAlgorithm = Literal["HS256", "HS384", "HS512"]
 
 # Claims every access token carries; a token missing one is refused
-_REQUIRED_CLAIMS = ["exp", "sub"]
+_REQUIRED_CLAIMS = ["exp", "sub", "sid"]
 
 logger = logging.getLogger(__name__)
 
@@ -96,6 +101,14 @@ class SessionRefresh(BaseModel):
 
     # Keep the session across browser restarts
     remember: bool
+
+
+@dataclass(frozen=True)
+class _AccessTokenClaims:
+    """The identity claims of a validated access token, still unparsed."""
+
+    subject: str
+    session_id: str
 
 
 @dataclass(frozen=True)
@@ -181,29 +194,28 @@ class SessionIssuer:
         of their own follow it too."""
         return self._refresh_cookie_secure
 
-    def create_access_token(self, user_id: uuid.UUID) -> str:
-        now = datetime.now(UTC)
-        expire = now + timedelta(minutes=self._access_token_expire_minutes)
-        payload = {"sub": str(user_id), "iat": now, "exp": expire}
-        return jwt.encode(payload, self._secret_key, algorithm=self._algorithm)
-
     def authenticate(self, session: Session, request: Request) -> AuthenticatedUser:
-        """Resolve the request's bearer access token to an active user."""
+        """Resolve the request's bearer access token to an active user and
+        their session."""
         token = bearer_token(request)
         try:
-            subject = self._access_token_subject(token)
+            claims = self._access_token_claims(token)
         except InvalidTokenError as error:
             raise AuthenticationError("Token is invalid or expired") from error
         try:
-            user_id = uuid.UUID(subject)
+            user_id = uuid.UUID(claims.subject)
         except ValueError as error:
             raise AuthenticationError("Token subject is not a user id") from error
+        try:
+            session_id = uuid.UUID(claims.session_id)
+        except ValueError as error:
+            raise AuthenticationError("Token sid is not a session id") from error
         try:
             user = get_user(session, user_id)
         except UserNotFoundError as error:
             raise AuthenticationError(str(error)) from error
         ensure_active_user(user)
-        return authenticated_user_from(user)
+        return authenticated_user_from(user, session_id)
 
     def start(self, session: Session, user_id: uuid.UUID) -> IssuedTokens:
         """Start a session for a user who just signed in, stamping their
@@ -241,7 +253,7 @@ class SessionIssuer:
     def is_access_token(self, token: str) -> bool:
         """Whether ``token`` is an access token this issuer signed."""
         try:
-            self._access_token_subject(token)
+            self._access_token_claims(token)
         except InvalidTokenError:
             return False
         return True
@@ -335,7 +347,7 @@ class SessionIssuer:
             family_expires_at,
         )
         token = Token(
-            access_token=self.create_access_token(user_id),
+            access_token=self._create_access_token(user_id, family_id),
             token_type="bearer",
             expires_in=self._access_token_expire_minutes * 60,
             refresh_token=issue_refresh_token(
@@ -353,14 +365,20 @@ class SessionIssuer:
             samesite="strict",
         )
 
-    def _access_token_subject(self, token: str) -> str:
-        """The ``sub`` claim of an access token this issuer signed; raises
-        InvalidTokenError for a bad signature, an expired token or a missing
-        claim."""
+    def _create_access_token(self, user_id: uuid.UUID, session_id: uuid.UUID) -> str:
+        now = datetime.now(UTC)
+        expire = now + timedelta(minutes=self._access_token_expire_minutes)
+        payload = {"sub": str(user_id), "sid": str(session_id), "iat": now, "exp": expire}
+        return jwt.encode(payload, self._secret_key, algorithm=self._algorithm)
+
+    def _access_token_claims(self, token: str) -> _AccessTokenClaims:
+        """The ``sub`` and ``sid`` claims of an access token this issuer
+        signed; raises InvalidTokenError for a bad signature, an expired token
+        or a missing claim."""
         payload = jwt.decode(
             token,
             self._secret_key,
             algorithms=[self._algorithm],
             options={"require": _REQUIRED_CLAIMS},
         )
-        return payload["sub"]
+        return _AccessTokenClaims(subject=payload["sub"], session_id=payload["sid"])
