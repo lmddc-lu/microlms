@@ -25,7 +25,7 @@ theme:
 
 nav:
   - Home: 'index.md'
-  - Client project: 'client-project.md'
+  - Get started: 'get-started.md'
   - Configuration: 'configuration.md'
   - Migrations: 'migrations.md'
   - Development: 'development.md'

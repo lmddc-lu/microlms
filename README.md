@@ -7,7 +7,7 @@ Distributed as `microlms-core`, imported as `microlms`. Runs on PostgreSQL, reco
 ## Documentation
 
 - [Features, requirements and installation](docs/index.md)
-- [Client project](docs/client-project.md) - building the app with `create_app()`
+- [Get started](docs/get-started.md) 
 - [Configuration](docs/configuration.md)
 - [Migrations](docs/migrations.md)
 - [Development](docs/development.md)

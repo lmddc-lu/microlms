@@ -6,10 +6,7 @@ stay thin shells.
 
 Distributed as `microlms-core`, imported as `microlms`.
 
-Source code:
-
-- [github.com/lmddc-lu/microlms](https://github.com/lmddc-lu/microlms)
-- [git.skilltech.dev/platform/microlms/microlms-core](https://git.skilltech.dev/platform/microlms/microlms-core)
+Source code: [github.com/lmddc-lu/microlms](https://github.com/lmddc-lu/microlms)
 
 ## Features
 
@@ -60,7 +57,7 @@ uv add git+https://github.com/lmddc-lu/microlms --tag v0.1.0 --extra jwt --extra
 | `lti` | the `lti` module (LTI 1.3 platform) |
 | `xapi` | the `xapi` ingestion module |
 
-Then build the app as described in [Client project](client-project.md).
+Then build the app as described in [Get started](get-started.md).
 
 ## Demos
 

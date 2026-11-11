@@ -1,4 +1,4 @@
-# Client project
+# Get started
 
 A client project depends on `microlms-core` (see [Installation](index.md#installation)), builds
 the app with `create_app()`, and mounts its own routers on top.
