@@ -1,0 +1,31 @@
+site_name: microLMS core documentation
+site_description: 'Documentation for microlms-core, the reusable micro-LMS engine'
+site_author: 'LMDDC'
+plugins:
+  - search:
+      lang: en
+      separator: '[\s\-,:!=\[\]()"`/]+|\.(?!\d)|&[lg]t;|(?!\b)(?=[A-Z][a-z])'
+  - monorepo
+theme:
+  name: material
+  language: en
+  palette:
+    - scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+
+nav:
+  - Home: 'index.md'
+  - Client project: 'client-project.md'
+  - Configuration: 'configuration.md'
+  - Migrations: 'migrations.md'
+  - Development: 'development.md'

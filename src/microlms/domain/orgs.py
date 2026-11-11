@@ -29,6 +29,9 @@ __all__ = [
 
 
 class Org(Base):
+    """An organization: users hold org roles inside it, and courses can be
+    owned by it and assigned to it."""
+
     __tablename__ = "lms_org"
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -68,6 +71,7 @@ def get_org_by_slug(session: Session, slug: str) -> Org:
 
 
 def list_orgs(session: Session) -> list[Org]:
+    """Return every organization, ordered by id."""
     return list(session.scalars(select(Org).order_by(Org.id)))
 
 

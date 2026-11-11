@@ -60,6 +60,9 @@ class UserRole(enum.StrEnum):
 
 
 class User(Base):
+    """An account, with the roles it holds on the platform and in each of
+    its organizations."""
+
     __tablename__ = "lms_user"
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
@@ -184,6 +187,7 @@ def _non_empty_roles(roles: Iterable[str]) -> list[str]:
 
 
 def get_user(session: Session, user_id: uuid.UUID) -> User:
+    """Return a user by id; raises UserNotFoundError when none exists."""
     user = session.get(User, user_id)
     if user is None:
         raise UserNotFoundError(f"No user with id {user_id}")

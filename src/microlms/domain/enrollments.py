@@ -42,11 +42,16 @@ __all__ = [
 
 
 class EnrollmentStatus(enum.StrEnum):
+    """An enrollment is active until every activity of its course is
+    satisfied, then completed."""
+
     ACTIVE = "active"
     COMPLETED = "completed"
 
 
 class Enrollment(Base):
+    """One user enrolled into one course."""
+
     __tablename__ = "lms_enrollment"
     __table_args__ = (UniqueConstraint("user_id", "course_id"),)
 

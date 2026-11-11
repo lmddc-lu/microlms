@@ -67,12 +67,22 @@ if TYPE_CHECKING:
 
 
 class CourseStatus(enum.StrEnum):
+    """Lifecycle of a course: only published courses are listed in the
+    catalog and can be enrolled into; archiving removes a course from the
+    catalog while its existing enrollments survive."""
+
     DRAFT = "draft"
     PUBLISHED = "published"
     ARCHIVED = "archived"
 
 
 class Course(Base):
+    """A course: an ordered list of activities learners enroll into.
+
+    ``org_ids`` are the organizations the course is assigned to: a course
+    with no assignment is visible from every organization.
+    """
+
     __tablename__ = "lms_course"
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -168,6 +178,7 @@ class SlugAlreadyUsedError(Exception):
 
 
 def get_course(session: Session, course_id: int) -> Course:
+    """Return a course by id; raises CourseNotFoundError when none exists."""
     course = session.get(Course, course_id)
     if course is None:
         raise CourseNotFoundError(f"No course with id {course_id}")
