@@ -1,6 +1,6 @@
 [project]
 name = "microlms-core"
-version = "0.1.0"
+version = "0.2.0"
 description = "Reusable micro-LMS core: FastAPI app factory with pluggable auth, storage, event hooks and optional content modules (SCORM, CMI5, H5P, LTI)"
 readme = "README.md"
 license = "AGPL-3.0-or-later"

@@ -48,7 +48,7 @@ Source code: [github.com/lmddc-lu/microlms](https://github.com/lmddc-lu/microlms
 Depend on a tagged release, with the extras you need:
 
 ```bash
-uv add git+https://github.com/lmddc-lu/microlms --tag v0.1.0 --extra jwt --extra scorm
+uv add git+https://github.com/lmddc-lu/microlms --tag v0.2.0 --extra jwt --extra scorm
 ```
 
 | Extra | Enables |

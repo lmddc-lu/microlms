@@ -3,7 +3,7 @@
 Working on the core itself, from a clone of the repository:
 
 ```bash
-uv sync
+uv sync --all-extras               # the tests cover every optional module
 cp .env.example .env
 uv run uvicorn main:app --reload   # dev server
 uv run pytest                      # tests (needs Docker)

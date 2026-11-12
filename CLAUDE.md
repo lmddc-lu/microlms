@@ -9,7 +9,7 @@ Reusable micro-LMS engine, distributed as the pip package `microlms-core` but im
 ## Commands
 
 ```sh
-uv sync                                # install deps (editable install of the package)
+uv sync --all-extras                   # install deps with every extra (the tests need them)
 uv run pytest                          # run tests (needs Docker, see tests/conftest.py)
 uv run pytest tests/test_courses.py -k <name>   # run a single test
 uv run ruff check                      # lint (add --fix to auto-fix)

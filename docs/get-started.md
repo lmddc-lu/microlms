@@ -12,22 +12,22 @@ holds its own Alembic chain next to the core one, and `index.html` is a one-page
 ```python
 from microlms import DEFAULT_ACCESS_POLICY, create_app, create_db_engine
 
-settings = AppSettings()              # subclass of microlms.Settings
+settings = AppSettings()  # subclass of microlms.Settings
 # One engine per process: hooks and periodic tasks open their sessions on it
 # with microlms.create_session_factory(engine)
 engine = create_db_engine(settings.database_url, echo=settings.debug)
 app = create_app(
     settings=settings,
-    engine=engine,                    # sqlalchemy Engine the app runs on
-    auth=SsoAuthBackend(),            # implements microlms.auth.AuthBackend
-    storage=S3Storage(...),           # implements microlms.storage.StorageBackend
-    hooks=AppHooks(),                 # implements microlms.events.EventHooks
+    engine=engine,  # sqlalchemy Engine the app runs on
+    auth=SsoAuthBackend(),  # implements microlms.auth.AuthBackend
+    storage=S3Storage(...),  # implements microlms.storage.StorageBackend
+    hooks=AppHooks(),  # implements microlms.events.EventHooks
     routers=["users", "orgs", "courses", "enrollments", "audit"],  # core routers to mount
-    modules=["scorm", "h5p"],         # optional content modules to mount
-    schedules=[],                     # periodic background tasks (microlms.PeriodicTask)
+    modules=["scorm", "h5p"],  # optional content modules to mount
+    schedules=[],  # periodic background tasks (microlms.PeriodicTask)
     access_policy=DEFAULT_ACCESS_POLICY,  # role -> permission set
 )
-app.include_router(app_router)        # your own endpoints
+app.include_router(app_router)  # your own endpoints
 ```
 
 The running app serves its OpenAPI reference at `/docs`.
