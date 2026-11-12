@@ -10,7 +10,7 @@ uv run pytest                      # tests (needs Docker)
 uv run ruff check                  # lint
 ```
 
-`main.py` is a dev-only entrypoint; client projects never use it.
+`main.py` is a dev-only entrypoint; projects using microlms never use it.
 
 New core migration:
 

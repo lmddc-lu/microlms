@@ -45,7 +45,7 @@ Content modules live in `modules/`, one self-contained package each exposing `bu
 
 - SQLAlchemy 2.0 style (`DeclarativeBase`, `Mapped`/`mapped_column`), pinned `<2.1`. Constraint names come from the naming convention on `Base.metadata` in `db/base.py`; never name constraints manually.
 - Core tables are prefixed `lms_`. Client projects may reference them by foreign key but never alter them; client-specific data goes in client-owned satellite tables.
-- Migrations ship inside the package (`src/microlms/db/migrations/`) as an Alembic chain with branch label `core`. Client projects add `microlms:db/migrations/versions` to their own `version_locations` and run `alembic upgrade heads` to apply both chains (documented in docs/migrations.md, verified to work).
+- Migrations ship inside the package (`src/microlms/db/migrations/`) as an Alembic chain with branch label `core`. Client projects add `microlms:db/migrations/versions` to their own `version_locations` and run `alembic upgrade heads` to apply both chains (documented in docs/get-started.md, verified to work).
 - New models must be imported in `db/migrations/env.py` so autogenerate sees them.
 
 ## Conventions

@@ -1,7 +1,7 @@
 # Configuration
 
-`microlms.Settings` reads `MICROLMS_`-prefixed environment variables or a `.env` file. Client
-projects subclass it to add their own fields. Each setting is documented in
+`microlms.Settings` reads `MICROLMS_`-prefixed environment variables or a `.env` file. Subclass
+it in your project to add your own fields. Each setting is documented in
 [`src/microlms/config.py`](https://github.com/lmddc-lu/microlms/blob/main/src/microlms/config.py).
 
 Only the database URL is required:

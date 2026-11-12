@@ -27,5 +27,4 @@ nav:
   - Home: 'index.md'
   - Get started: 'get-started.md'
   - Configuration: 'configuration.md'
-  - Migrations: 'migrations.md'
   - Development: 'development.md'

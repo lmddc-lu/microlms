@@ -1,8 +1,12 @@
 # microLMS core
 
-Reusable micro-LMS engine. Client projects install this package, call `create_app()` with their
-own backends, and mount their own routers on top. The core is the only shared code; client repos
-stay thin shells.
+The base for an LMS platform: users, organizations, courses, enrollments and content players,
+served over an HTTP API. Provide a small wrapper around it and a frontend, and you are up and
+running with an LMS hosting courses for learners.
+
+The wrapper is your own Python project: it installs this package, calls `create_app()` with its
+settings and backends (authentication, file storage, event hooks), and can mount its own
+endpoints on top.
 
 Distributed as `microlms-core`, imported as `microlms`.
 
@@ -12,7 +16,7 @@ Source code: [github.com/lmddc-lu/microlms](https://github.com/lmddc-lu/microlms
 
 - **Users, organizations, courses and enrollments** over a FastAPI HTTP API. A course is an
   ordered list of activities (optionally sequential), each available in several languages.
-- **Permission-based authorization** modelled on Kubernetes RBAC: roles are client-defined sets
+- **Permission-based authorization** modelled on Kubernetes RBAC: roles are project-defined sets
   of permissions, assigned either platform-wide or inside one organization, with no privilege
   escalation.
 - **Content modules**, each behind its own extra:
@@ -61,7 +65,7 @@ Then build the app as described in [Get started](get-started.md).
 
 ## Demos
 
-Runnable client projects built on the public core surface, under `demo/` in the repository:
+Runnable projects built on the public core surface, under `demo/` in the repository:
 
 - [`demo/anonymous-scorm`](https://github.com/lmddc-lu/microlms/tree/main/demo/anonymous-scorm) -
   anonymous learners upload and play SCORM packages.
