@@ -6,7 +6,7 @@ microlms-core is licensed under the GNU Affero General Public License v3.0 or la
 
 | Component | Location | License | Copyright |
 | --- | --- | --- | --- |
-| [scorm-again](https://github.com/jcputney/scorm-again) 3.4.7 | `src/microlms/modules/scorm/scorm-again-*.min.js` | MIT (`scorm-again.LICENSE.txt`) | Jonathan Putney |
+| [scorm-again](https://github.com/jcputney/scorm-again) 3.5.0 | `src/microlms/modules/scorm/scorm-again-*.min.js` | MIT (`scorm-again.LICENSE.txt`) | Jonathan Putney |
 | [h5p-standalone](https://github.com/tunapanda/h5p-standalone) player | `src/microlms/modules/h5p/assets/` | MIT (`assets/LICENSE.txt`) | Tunapanda |
 | H5P core runtime, styles and icon fonts, bundled by h5p-standalone ([h5p-php-library](https://github.com/h5p/h5p-php-library)) | `src/microlms/modules/h5p/assets/frame.bundle.js`, `styles/`, `fonts/h5p-*` | GPL-3.0 | Joubel |
 | [Inter](https://github.com/rsms/inter) font | `src/microlms/modules/h5p/assets/fonts/inter/` | SIL OFL 1.1 (`LICENSE.txt`) | The Inter Project Authors |
