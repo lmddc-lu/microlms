@@ -30,6 +30,9 @@ app = create_app(
 app.include_router(app_router)  # your own endpoints
 ```
 
+`AppSettings()` reads its values from `MICROLMS_`-prefixed environment variables or a `.env` file.
+Only `MICROLMS_DATABASE_URL` is required; see [Configuration](configuration.md) for the rest.
+
 The running app serves its OpenAPI reference at `/docs`.
 
 ## Database migrations
